@@ -86,6 +86,31 @@ resolvectl query github.com
 - 校园口拿到 `10.x.x.x` 地址。
 - 默认路由优先走校园口，管理口保留较高 metric 的备用路由。
 
+## 重启后断网时运行什么
+
+先不要重启整机，也不要改管理口。通过管理 IP SSH 进去后运行：
+
+```bash
+sudo systemctl restart sufe-8021x.service
+sudo systemctl restart sufe-campus-dhcp.service
+```
+
+然后检查：
+
+```bash
+systemctl status sufe-8021x.service sufe-campus-dhcp.service --no-pager
+ip -br addr show
+ip route
+resolvectl query github.com
+```
+
+如果 DHCP 服务失败，它会保留管理口路由，不会继续写入错误默认路由。常见恢复形态是：
+
+```text
+default via 10.64.0.1 dev enp1s0 metric 50
+default via 192.168.137.1 dev enp2s0 metric 500
+```
+
 ## 文件说明
 
 - [scripts/sufe_8021x_auth.py](scripts/sufe_8021x_auth.py)：最小 EAPOL/Type 7 认证器。
@@ -109,6 +134,8 @@ resolvectl query github.com
 - iNode 日志
 
 本仓库只保存公共脚本和模板。真实环境配置应只放在 `/etc/sufe-8021x/sufe-8021x.env`，并设置为 root-only 权限。
+
+校园网口建议配合防火墙使用：允许 DHCP 响应进入校园口，但拒绝校园口对本机服务和 Docker 映射端口的入站访问。SSH、面板、媒体服务和自动化服务应优先通过管理网或 Tailscale 访问。
 
 ## License
 

@@ -12,6 +12,11 @@ EAPOL_VERSION = 1
 EAPOL_PACKET = 0
 EAPOL_START = 1
 PAE_GROUP = bytes.fromhex("0180c2000003")
+DEFAULT_STATE_FILE = "/run/sufe-8021x-authenticated"
+
+
+def log(message, *, err=False):
+    print(message, file=sys.stderr if err else sys.stdout, flush=True)
 
 
 def parse_env_file(path):
@@ -35,6 +40,29 @@ def mac_bytes_from_sysfs(iface):
 
 def format_mac(raw):
     return ":".join(f"{byte:02x}" for byte in raw)
+
+
+def remove_state(path):
+    if not path:
+        return
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+
+
+def write_state(path, iface, src_mac, eap_id, success_count):
+    if not path:
+        return
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="ascii") as handle:
+        handle.write(f"time={int(time.time())}\n")
+        handle.write(f"iface={iface}\n")
+        handle.write(f"mac={format_mac(src_mac)}\n")
+        handle.write(f"eap_id={eap_id}\n")
+        handle.write(f"success_count={success_count}\n")
+    os.replace(tmp_path, path)
+    os.chmod(path, 0o644)
 
 
 def send_eapol_start(sock, src_mac):
@@ -63,6 +91,7 @@ def main():
     parser.add_argument("--iface", default=None)
     parser.add_argument("--username", default=None)
     parser.add_argument("--password", default=None)
+    parser.add_argument("--state-file", default=None)
     parser.add_argument("--once", action="store_true", help="exit after first EAP Success")
     parser.add_argument("--start-interval", type=float, default=5.0)
     parser.add_argument("--listen-timeout", type=float, default=1.0)
@@ -72,23 +101,25 @@ def main():
     iface = args.iface or cfg.get("SUFE_IFACE") or os.environ.get("SUFE_IFACE")
     username = args.username or cfg.get("SUFE_USERNAME") or os.environ.get("SUFE_USERNAME")
     password = args.password or cfg.get("SUFE_PASSWORD") or os.environ.get("SUFE_PASSWORD")
+    state_file = args.state_file or cfg.get("SUFE_AUTH_STATE") or os.environ.get("SUFE_AUTH_STATE") or DEFAULT_STATE_FILE
 
     if not iface or not username or not password:
-        print("missing iface, username, or password", file=sys.stderr)
+        log("missing iface, username, or password", err=True)
         return 2
 
     username_bytes = username.encode("ascii")
     password_bytes = password.encode("ascii")
     if len(password_bytes) > 255:
-        print("password too long for Type 7 length byte", file=sys.stderr)
+        log("password too long for Type 7 length byte", err=True)
         return 2
 
     src_mac = mac_bytes_from_sysfs(iface)
+    remove_state(state_file)
     sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(ETH_P_EAPOL))
     sock.bind((iface, 0))
     sock.settimeout(args.listen_timeout)
 
-    print(f"iface={iface} mac={format_mac(src_mac)} identity_len={len(username_bytes)} password_len={len(password_bytes)}")
+    log(f"iface={iface} mac={format_mac(src_mac)} identity_len={len(username_bytes)} password_len={len(password_bytes)} state_file={state_file}")
     send_eapol_start(sock, src_mac)
     last_start = time.monotonic()
     success_count = 0
@@ -98,7 +129,7 @@ def main():
         if success_count == 0 and args.start_interval > 0 and now - last_start >= args.start_interval:
             send_eapol_start(sock, src_mac)
             last_start = now
-            print("sent EAPOL-Start")
+            log("sent EAPOL-Start")
 
         try:
             packet = sock.recv(2048)
@@ -124,20 +155,22 @@ def main():
             eap_type = eap[4]
             if eap_type == 1:
                 send_eap_response(sock, src_mac, peer_mac, eap_id, 1, username_bytes)
-                print(f"request={describe_request(eap_type)} id={eap_id} -> response identity_len={len(username_bytes)}")
+                log(f"request={describe_request(eap_type)} id={eap_id} -> response identity_len={len(username_bytes)}")
             elif eap_type == 7:
                 payload = bytes([len(password_bytes)]) + password_bytes + username_bytes
                 send_eap_response(sock, src_mac, peer_mac, eap_id, 7, payload)
-                print(f"request={describe_request(eap_type)} id={eap_id} -> response payload_len={len(payload)}")
+                log(f"request={describe_request(eap_type)} id={eap_id} -> response payload_len={len(payload)}")
             else:
-                print(f"request={describe_request(eap_type)} id={eap_id} ignored")
+                log(f"request={describe_request(eap_type)} id={eap_id} ignored")
         elif eap_code == 3:
             success_count += 1
-            print(f"EAP Success id={eap_id} count={success_count}")
+            write_state(state_file, iface, src_mac, eap_id, success_count)
+            log(f"EAP Success id={eap_id} count={success_count}")
             if args.once:
                 return 0
         elif eap_code == 4:
-            print(f"EAP Failure id={eap_id}", file=sys.stderr)
+            remove_state(state_file)
+            log(f"EAP Failure id={eap_id}", err=True)
             if args.once:
                 return 1
             success_count = 0

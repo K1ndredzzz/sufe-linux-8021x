@@ -6,7 +6,7 @@ Requires=sufe-8021x.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStartPre=/bin/sleep 6
+TimeoutStartSec=120
 ExecStart=/usr/local/sbin/sufe-campus-dhcp-route.sh
 ExecStop=/bin/sh -c '. /etc/sufe-8021x/sufe-8021x.env; dhclient -4 -r -pf "/run/dhclient-$SUFE_IFACE.pid" "$SUFE_IFACE" || true; ip route del default via "$SUFE_GATEWAY" dev "$SUFE_IFACE" 2>/dev/null || true'
 
