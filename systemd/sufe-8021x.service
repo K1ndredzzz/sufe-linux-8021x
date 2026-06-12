@@ -1,0 +1,16 @@
+[Unit]
+Description=SUFE campus 802.1X authentication
+After=network-pre.target
+Before=network-online.target
+Wants=network-pre.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/sufe-8021x/sufe-8021x.env
+ExecStartPre=/usr/local/sbin/sufe-campus-net.sh
+ExecStart=/usr/bin/python3 /usr/local/sbin/sufe_8021x_auth.py --env-file /etc/sufe-8021x/sufe-8021x.env
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

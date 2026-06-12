@@ -1,0 +1,11 @@
+.ace-tool/
+__pycache__/
+*.py[cod]
+*.local
+*.local.*
+*.pcap
+*.pcapng
+*.log
+*.leases
+private-notes.local.md
+sufe-8021x.env
