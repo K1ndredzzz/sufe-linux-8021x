@@ -205,7 +205,9 @@ default via management-gateway dev enp2s0 metric 500
 
 ## 代码和文档
 
-公共脚本和操作指南整理在仓库里。真实账号、密码、绑定 MAC、原始 pcap 和 iNode 日志不会进入仓库。
+公共脚本和操作指南整理在这个仓库里：[K1ndredzzz/sufe-linux-8021x](https://github.com/K1ndredzzz/sufe-linux-8021x)。
+
+真实账号、密码、绑定 MAC、原始 pcap 和 iNode 日志不会进入仓库。
 
 仓库里保留的是可复用的部分：最小 Type 7 认证脚本、DHCP/路由脚本、systemd 单元、排障手册和抓包分析笔记。
 
